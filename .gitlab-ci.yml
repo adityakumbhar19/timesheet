@@ -1,0 +1,56 @@
+stages:
+  - build
+  - push
+  - deploy
+
+variables:
+  DOCKER_REPO: adityakumbhar19/timesheet
+
+# ----------------------
+# 1. Build Stage
+# ----------------------
+build:
+  stage: build
+  image: docker:24.0.5
+  services:
+    - docker:dind
+  before_script:
+    - docker info
+  script:
+    - docker build -t $DOCKER_REPO:frontend ./client
+    - docker build -t $DOCKER_REPO:backend ./server
+  only:
+    - main
+
+# ----------------------
+# 2. Push Stage
+# ----------------------
+push:
+  stage: push
+  image: docker:24.0.5
+  services:
+    - docker:dind
+  before_script:
+    - echo "$DOCKERHUB_PASSWORD" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+  script:
+    - docker push $DOCKER_REPO:frontend
+    - docker push $DOCKER_REPO:backend
+  only:
+    - main
+
+# ----------------------
+# 3. Deploy Stage (Local)
+# ----------------------
+deploy:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache openssh-client bash
+    - mkdir -p ~/.ssh
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
+  script:
+    - ssh $SSH_USER@$SSH_HOST "cd /docker/timesheet && docker compose pull && docker compose up -d --remove-orphans"
+  only:
+    - main

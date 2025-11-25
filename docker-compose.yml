@@ -1,0 +1,92 @@
+version: "3.8"
+
+services:
+  # ----------------------------------------------------
+  # 1. FRONTEND Service (Unchanged)
+  # ----------------------------------------------------
+
+
+  # # ----------------------------------------------------
+  # # 2. BACKEND Service (CRITICAL CHANGE: Context set to ./server)
+  # # ----------------------------------------------------
+
+  # ----------------------------------------------------
+  # 3. DATABASE Service (MySQL - CHANGED HOST PORT)
+  # ----------------------------------------------------
+  
+  # postgres:
+  #   image: postgres:16-alpine
+  #   container_name: timesheet_postgres
+  #   restart: always
+  #   environment:
+  #     POSTGRES_PASSWORD: Neilsoft@100
+  #     POSTGRES_DB: sample
+  #     POSTGRES_USER: root
+  #   volumes:
+  #     # Persist database data
+  #     - timesheet_db_data:/var/lib/postgresql/data
+  #   healthcheck:
+  #     # MySQL health check command
+  #     test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  mysql:
+    image: mysql:8.0
+    container_name: timesheet_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: Neilsoft@100
+      MYSQL_DATABASE: sample
+    ports:
+      - "3307:3306"   # expose MySQL outside the container
+    volumes:
+      - timesheet_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pNeilsoft@100"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    ports:
+      # Maps external port 3000 to internal container port 8080 (assuming React Dev Server default)
+      - "3000:3000"
+    environment:
+      # Stays the same, pointing API calls to the backend service's exposed port 3001
+      REACT_APP_API_URL: http://backend:3001/api
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: on-failure
+
+  backend:
+    build:
+      # CORRECTED PATH: Assumes all backend files are in a 'server' subdirectory
+      context: ./server 
+      dockerfile: Dockerfile
+
+
+    ports:
+      # Maps external port 3001 (used by the frontend) to internal container port 8080 (from index.js)
+      - "3001:3001"
+    env_file:
+      - .env
+    healthcheck:
+      # We use a simple healthcheck that hits the root route, assuming it starts
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 180s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      mysql: # DEPENDS ON THE NEW 'db' (MySQL) SERVICE
+        condition: service_healthy
+    restart: on-failure
+    
+# Define the persistent volume
+volumes:
+  timesheet_db_data:
