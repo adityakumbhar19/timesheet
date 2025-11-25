@@ -10,14 +10,16 @@ jobs:
   test:
     runs-on: ubuntu-latest
     
+    # ----------------------------------------------------
+    # 1. SERVICES: Define the MySQL service required for the backend
+    # ----------------------------------------------------
     services:
-      # Start the MySQL container and explicitly map its port to the host
       mysql:
         image: mysql:8.0
         env:
           MYSQL_ROOT_PASSWORD: Neilsoft@100
           MYSQL_DATABASE: sample
-        # 🔑 FIX: Map the MySQL port to the host machine
+        # FIX: Map the MySQL port to the host machine so the backend can access it via localhost:3307
         ports:
           - 3307:3306 
         options: >-
@@ -31,7 +33,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       
-      # 1. Set up Node.js (Used for running 'npm install' and 'npm test' on the host)
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -42,41 +43,29 @@ jobs:
         run: docker build ./server --file ./server/Dockerfile --tag backend-test:latest
 
       # 3. Start the Backend service linked to the Host network
+      # FIX: Changed to a robust single-line command to avoid shell parsing errors.
       - name: Start Backend Service for Testing
-        run: |
-          docker run -d --rm \
-            --name timesheet_backend \
-            # 🔑 FIX: Use Host Network for communication with the exposed MySQL service
-            --network host \
-            # 🔑 FIX: Expose the backend port (this is what 'wait_for_response' needs)
-            -p 3001:3001 \
-            -e MYSQL_HOST=127.0.0.1 \
-            -e MYSQL_PORT=3307 \
-            -e MYSQL_USER=root \
-            -e MYSQL_PASSWORD=Neilsoft@100 \
-            -e MYSQL_DB=sample \
-            backend-test:latest
+        run: docker run -d --rm --name timesheet_backend --network host -p 3001:3001 -e MYSQL_HOST=127.0.0.1 -e MYSQL_PORT=3307 -e MYSQL_USER=root -e MYSQL_PASSWORD=Neilsoft@100 -e MYSQL_DB=sample backend-test:latest
 
       # 4. Wait for the database and backend to be fully ready
+      # The wait is now possible because the backend is exposed on localhost:3001
       - name: Wait for Backend Health Check
         uses: nev7n/wait_for_response@v1
         with:
-          # This URL is now accessible because the backend is running on the host network (localhost:3001)
           url: http://localhost:3001/health 
           responseCode: 200
           timeout: 180
-          interval: 5 # Recommended to increase the interval for stability
+          interval: 5
 
       # 5. Install backend dependencies and run tests
       - name: Run Backend Integration Tests
         run: |
           cd server
           npm install
-          npm test # <--- Ensure this command is correct and works with the host env variables
+          npm test # REMINDER: Replace 'npm test' with your actual test command
         env:
           MYSQL_HOST: 127.0.0.1
           MYSQL_PORT: 3307 
-          # ... other necessary environment variables for your tests
 
 ---
 
@@ -85,13 +74,12 @@ jobs:
   # ----------------------------------------------------
   build-backend:
     runs-on: ubuntu-latest
-    needs: test # CRITICAL: Only runs if the 'test' job succeeds
+    needs: test 
     
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Login, Metadata, Build & Push steps for the backend image (targeting GHCR)
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -103,7 +91,7 @@ jobs:
         id: meta_backend
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}/backend # Tag as /backend
+          images: ghcr.io/${{ github.repository }}/backend
           tags: |
             type=sha,format=true,prefix=backend-
 
@@ -112,7 +100,7 @@ jobs:
         with:
           context: ./server
           file: ./server/Dockerfile
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }} # Only push on main branch push
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           tags: ${{ steps.meta_backend.outputs.tags }}
 
 ---
@@ -122,13 +110,12 @@ jobs:
   # ----------------------------------------------------
   build-frontend:
     runs-on: ubuntu-latest
-    needs: test # Only runs if the 'test' job succeeds
+    needs: test 
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Login, Metadata, Build & Push steps for the frontend image
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -140,7 +127,7 @@ jobs:
         id: meta_frontend
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}/frontend # Tag as /frontend
+          images: ghcr.io/${{ github.repository }}/frontend
           tags: |
             type=sha,format=true,prefix=frontend-
 
@@ -148,6 +135,6 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./client
-          file: ./client/Dockerfile # Assuming the client Dockerfile is in ./client/Dockerfile
+          file: ./client/Dockerfile
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           tags: ${{ steps.meta_frontend.outputs.tags }}
