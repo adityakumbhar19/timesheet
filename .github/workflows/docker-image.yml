@@ -7,22 +7,19 @@ on:
     branches: [ "main" ]
 
 jobs:
-
-  # ----------------------------------------------------
-  # 1. TEST JOB: Runs integration tests using docker-compose services
-  # ----------------------------------------------------
   test:
     runs-on: ubuntu-latest
     
-    # Define services using the provided docker-compose file.
-    # We only start the MySQL and Backend services for testing.
     services:
+      # Start the MySQL container and explicitly map its port to the host
       mysql:
         image: mysql:8.0
         env:
           MYSQL_ROOT_PASSWORD: Neilsoft@100
           MYSQL_DATABASE: sample
-        # We don't expose ports here; the backend will communicate via the service name 'mysql'.
+        # 🔑 FIX: Map the MySQL port to the host machine
+        ports:
+          - 3307:3306 
         options: >-
           --name timesheet_mysql
           --health-cmd "mysqladmin ping -h localhost -pNeilsoft@100"
@@ -34,47 +31,52 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       
-      # 1. Set up Node.js for installing dependencies and running the test script
+      # 1. Set up Node.js (Used for running 'npm install' and 'npm test' on the host)
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      # 2. Build the backend image (this is required before running the test command)
+      # 2. Build the backend image for testing
       - name: Build Backend Service Image
         run: docker build ./server --file ./server/Dockerfile --tag backend-test:latest
 
-      # 3. Start the Backend service linked to the MySQL service
+      # 3. Start the Backend service linked to the Host network
       - name: Start Backend Service for Testing
         run: |
           docker run -d --rm \
             --name timesheet_backend \
+            # 🔑 FIX: Use Host Network for communication with the exposed MySQL service
             --network host \
+            # 🔑 FIX: Expose the backend port (this is what 'wait_for_response' needs)
+            -p 3001:3001 \
             -e MYSQL_HOST=127.0.0.1 \
+            -e MYSQL_PORT=3307 \
             -e MYSQL_USER=root \
             -e MYSQL_PASSWORD=Neilsoft@100 \
             -e MYSQL_DB=sample \
             backend-test:latest
 
       # 4. Wait for the database and backend to be fully ready
-      - name: Wait for services to be healthy
+      - name: Wait for Backend Health Check
         uses: nev7n/wait_for_response@v1
         with:
-          url: http://localhost:3001/health # Use the backend's exposed port and health check route
+          # This URL is now accessible because the backend is running on the host network (localhost:3001)
+          url: http://localhost:3001/health 
           responseCode: 200
           timeout: 180
+          interval: 5 # Recommended to increase the interval for stability
 
       # 5. Install backend dependencies and run tests
-      # NOTE: This assumes your test runner is in the server directory (e.g., /server/package.json)
       - name: Run Backend Integration Tests
         run: |
           cd server
           npm install
-          npm test # <--- REPLACE 'npm test' with your actual test command
-        # Environment variables for the tests might need to match the container setup
+          npm test # <--- Ensure this command is correct and works with the host env variables
         env:
           MYSQL_HOST: 127.0.0.1
-          MYSQL_PORT: 3307 # Use the host port mapped in docker-compose, if testing directly.
+          MYSQL_PORT: 3307 
+          # ... other necessary environment variables for your tests
 
 ---
 
