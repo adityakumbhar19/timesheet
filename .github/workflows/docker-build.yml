@@ -11,14 +11,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Login to DockerHub
         run: echo "${{ secrets.DOCKER_HUB_TOKEN }}" | docker login -u "adityakumbhar19" --password-stdin
 
-      - name: Build client image
-        run: docker buildx build ./client -t adityakumbhar19/timesheet-client:latest --push
+      - name: Build and Push Client Image
+        run: |
+          docker buildx build \
+            -t adityakumbhar19/timesheet-project:client-latest \
+            ./client --push
 
-      - name: Build server image
-        run: docker buildx build ./server -t adityakumbhar19/timesheet-server:latest --push
+      - name: Build and Push Server Image
+        run: |
+          docker buildx build \
+            -t adityakumbhar19/timesheet-project:server-latest \
+            ./server --push
