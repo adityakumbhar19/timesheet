@@ -1,18 +1,24 @@
+name: Build and Push to DockerHub
 
-name: Build and Push to dockerhub
 on:
-    [workflow_dispatch]
+  workflow_dispatch:
 
 jobs:
-    publish_image:
-       runs-on: ubuntu-latest
-       steps:
-        - name: Checkout
-          uses: actions/checkout@v4
-        - name: Build image
-          run: docker build ./client/ -t adityakumbhar19/timesheet-project:latest
-               docker build ./server/ -t adityakumbhar19/timesheet-project:latest
-        - name: Pushing images to DockerHub
-          run: |
-               docker login -u adityakumbhar19 -p ${{ secrets.DOCKER_HUB_TOKEN }}
-               docker push adityakumbhar19/timesheet-project:latest
+  publish_image:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to DockerHub
+        run: echo "${{ secrets.DOCKER_HUB_TOKEN }}" | docker login -u "adityakumbhar19" --password-stdin
+
+      - name: Build client image
+        run: docker buildx build ./client -t adityakumbhar19/timesheet-client:latest --push
+
+      - name: Build server image
+        run: docker buildx build ./server -t adityakumbhar19/timesheet-server:latest --push
